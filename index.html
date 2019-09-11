@@ -1,0 +1,179 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="碰碰球小游戏 使用html5 nodejs开发">
+    <meta name="author" content="">
+    <title>碰碰球</title>
+	<script src="/socket.io/socket.io.js"></script>
+    <link href="//netdna.bootstrapcdn.com/bootstrap/3.1.1/css/bootstrap.min.css" rel="stylesheet">
+	<script src="//code.jquery.com/jquery-2.1.1.min.js"></script>
+	<style>
+		#playground {
+			background-color: gray;
+			border-radius: 20px 20px;
+		}
+	</style>
+  </head>
+  <!--
+	20140513 
+	    1.搭建前端开发环境 （准备Jquery、Bootstrap文件并在index页面引入）
+		2.使用Bootstrap编写页面布局主要使用Bootstrap栅格系统（详见http://v3.bootcss.com/css/#grid-options）
+    20140514
+        1.搭建后端环境（安装nodejs socket.io   参考链接http://raytaylorlin.com/category/Tech/web/Node.js/socket-io-advanced/)  
+        2.前端通过socket链接实现游戏状态共享 俩个玩家看到的界面一致	
+    20140515
+	    1.前端界面添加键盘KeyDown事件 当按下“←”时向服务端发送球拍左移消息 当按下“→”时向服务端发送球拍右移消息
+		2.服务端添加接受球拍移动消息处理方法并执行球拍移动操作
+		3.添加小球和球拍的碰撞检测 当小球碰到球拍时折回并加速（增加趣味性）
+    20140516
+	    1.调整前端布局美化界面
+	20140517
+		1.调整前端页面适合手机浏览
+		2.添加触屏事件控制球拍
+    
+    运行方法：
+        进入app.js 所在目录 执行 node app.js  （请确保已经安装node  安装参考链接：http://www.infoq.com/cn/articles/nodejs-npm-install-config）
+		打开Chrome或火狐（支持html5）浏览器访问：http://127.0.0.1:8888/  开始游戏
+    		
+  -->   
+  <body>
+    <div class="container">
+			<div class="center-block text-center">
+				<!--游戏区域-->
+				<canvas  width="320" height="420" style="border:1px solid #c3c3c3;" id="playground"></canvas>
+			</div>
+    </div> <!-- /container -->
+	<div class="text-center">
+		<h4 class="text-info" id="msg">用左右键控制模板左右移动</h4>
+		<!--消息区域-->
+	</div>
+	<script>
+		var 
+		   serverAddress = 'http://127.0.0.1:8888', 
+		   //服务器地址  http://localhost:8888请将localhost换成自己的ip地址
+		   $playground = $('#playground');//获取ID为playground的Dom节点的jquery对象
+		
+        
+		var cxt=document.getElementById("playground").getContext('2d');//获得画布对象
+		//画球方法	
+		function drawBall(cxt,ball) {
+		    cxt.fillStyle="#0F3304";
+			cxt.beginPath();
+			cxt.arc(ball.x,ball.y,ball.r,0,Math.PI*2,true);
+			cxt.closePath();
+			cxt.fill();
+		}
+		//画球拍方法
+		function drawBoard(cxt,board) {
+		    //设置当前玩家的球拍颜色和球一样  对方的球拍为白色
+			cxt.fillStyle=  board.boardName === userName?"#0F3304":"#FFFFFF";
+			cxt.fillRect(board.x, board.y, board.width, board.height);
+		}
+		//清空画布方法
+        function cleanAll(cxt){
+			cxt.clearRect(0,0,1000,1000); 
+		};		
+		//重新绘制游戏信息方法
+		function redrawAll(cxt,gameInfo){
+			   cleanAll(cxt);
+			   drawBall(cxt,gameInfo.ball);
+			   drawBoard(cxt,gameInfo.boardA);
+			   drawBoard(cxt,gameInfo.boardB);
+		} 
+       		
+		var socket = io.connect(serverAddress),//链接socket
+		    userName='', //玩家标示  A  B
+			roomId = 'r000',//房间编号
+			$msg = $('#msg');//信息显示面板
+		
+		socket.emit('join', {//向服务端请求加入游戏
+			roomId:roomId
+		});
+		socket.on('oneplayer',function(data) {//当只有一个玩家的时候
+		    userName = data.userName;
+			$msg.html('当前只有您一个人 请将链接发给好友一起游戏');
+		});
+		socket.on('twoplayer',function(data) {//当有俩个玩家的时候
+		    if(!userName) {
+				userName = 'B';
+			}
+		    $msg.html('游戏马上开始,你的球拍和球的颜色一样哦');
+			
+			//添加控制球拍左右移动监听事件
+			bindCtrlBoardEvent();
+			
+			setTimeout(function() {//5秒钟后游戏开始 清除“游戏马上开始”消息
+				$msg.html('');
+			},5000);
+		})
+		var drawing = false,//是否正在重绘界面标志
+		    replay = '<a href="?replay=r">再来一次</a>'; 
+			
+		socket.on('gameInfo',function(data) {//接收游戏信息重新绘制屏幕
+               if(!drawing) {
+				   drawing = true;
+				   redrawAll(cxt,data);
+				   drawing = false;
+			   }
+		       
+		});
+		socket.on('roomful',function() {//当房间人满了执行方法
+			$msg.html('此房间已满！' + replay);
+		});
+		
+		socket.on('leave',function() {//当有人离开了执行方法
+			$msg.html('对方已离开！' + replay);
+			socket.disconnect();
+		});
+		socket.on('win',function(data) {//当有人赢了执行方法
+		   
+			data.winner === userName?$msg.html('你赢了！！！' + replay ):$msg.html('你输了...' + replay);
+		})
+		//向服务端发送球拍左移方法
+		function board2Left(socket) {
+			socket.emit('board2Left',{userName:userName,roomId:roomId});
+		}
+		//向服务端发送球拍右移方法
+		function board2Right(socket) {
+			socket.emit('board2Right',{userName:userName,roomId:roomId});
+		}
+		//绑定控制球拍移动事件
+		function bindCtrlBoardEvent() {
+		
+					//添加按键事件 控制球拍左右移动
+			$(window).keydown(function(event){ 
+				var keyCode = event.which;
+				switch(keyCode) 
+				{ 
+					case 37://按下←键; 球拍向左移动
+						board2Left(socket);
+					break; 
+					case 39://按下 →键；球拍向右移动
+						board2Right(socket);
+					break; 
+					
+				} 
+			});
+			/****
+			
+				获取屏幕的中间位置坐标当鼠标点击屏幕左边时球拍向左移动 点击屏幕右边时球拍向右移动
+			**/
+			var middleX = $(window).width()/2;
+			$(window).click(function(event) {
+				event.clientX> middleX?board2Right(socket):board2Left(socket);
+			});
+			//添加触屏事件控制球拍左右移动
+			document.addEventListener("touchstart",function(e) {
+				 event.touches[0].clientX>middleX?board2Right(socket):board2Left(socket);
+			}, false);
+
+
+		}
+		  
+		
+	</script>
+  </body>
+  
+</html>
