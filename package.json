@@ -4,8 +4,9 @@
   "description": "game pengpeng qiu",
   "main": "app.js",
   "dependencies": {
-    "express": "^4.15.2",
-    "socket.io": "^2.2.0"
+    "express": "^4.17.1",
+    "socket.io": "^2.2.0",
+    "engine.io": "~3.3.1"
   },
   "devDependencies": {},
   "scripts": {
